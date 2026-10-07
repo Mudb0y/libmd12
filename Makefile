@@ -7,7 +7,7 @@ SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=build/%.o)
 LIB = build/libmd12.a
 
-.PHONY: all lib check cli cross clean kernel spice selftest
+.PHONY: all lib check cli cross m7check clean kernel spice selftest
 
 all: lib cli
 
@@ -56,6 +56,17 @@ cross:
 	    -mfloat-abi=hard -O2 $(WARN) -fsingle-precision-constant $(CPPFLAGS) -c $$f \
 	    -o build/cross/$$(basename $$f .c).o || exit 1; done
 	arm-none-eabi-size build/cross/*.o
+
+# The whole test suite on a Cortex-M7 with a single-precision FPU, under QEMU.
+M7 = -mcpu=cortex-m7 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard
+build/m7/test.elf: $(SRC) tests/test_md12.c tests/m7/boot.c tests/m7/m7.ld include/md12.h src/internal.h
+	mkdir -p build/m7
+	arm-none-eabi-gcc $(M7) -O2 -std=c99 $(CPPFLAGS) -Dmain=test_main -nostartfiles \
+	    --specs=rdimon.specs -Wl,--no-warn-rwx-segments -T tests/m7/m7.ld $(SRC) tests/test_md12.c tests/m7/boot.c -lm -o $@
+
+m7check: build/m7/test.elf
+	qemu-system-arm -M mps2-an500 -nographic -monitor none -serial none \
+	    -semihosting-config enable=on,target=native -kernel build/m7/test.elf
 
 clean:
 	rm -rf build
