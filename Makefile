@@ -7,7 +7,7 @@ SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=build/%.o)
 LIB = build/libmd12.a
 
-.PHONY: all lib check cli cross clean kernel
+.PHONY: all lib check cli cross clean kernel spice
 
 all: lib cli
 
@@ -25,6 +25,11 @@ build:
 # The tables are committed, so building the library needs no Python.
 kernel:
 	python3 tools/gen_kernel.py src/kernel.c
+
+# The filter prototypes come from the netlists, checked against ngspice.
+spice:
+	tools/spice/run.sh
+	python3 tools/gen_filters.py src/proto.c
 
 build/test_md12: tests/test_md12.c $(LIB)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -Wall -Wextra $< $(LIB) -lm -o $@

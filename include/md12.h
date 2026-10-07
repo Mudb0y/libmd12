@@ -54,6 +54,9 @@ typedef struct md12_calib {
     /* Outputs 1 to 6 carry the unfiltered signal on the tip and the
      * filtered one on the ring (SP-1200), or filtered on the tip (SP-12). */
     int split_jacks;
+    /* Outputs 3 to 6: each fixed filter's frequencies over the schematic's,
+     * for parts that sit away from their nominal values. */
+    float fixed_scale[4];
 } md12_calib;
 
 void md12_calib_sp1200(md12_calib *c);
@@ -91,6 +94,19 @@ void md12_render_init(md12_render *r);
 void md12_render_set(md12_render *r, float value, float frac);
 float md12_render_out(md12_render *r);
 
+/* ---- A fixed analogue filter at the host rate ---------------------------
+ * The poles are the analogue poles mapped exactly; one short numerator is
+ * fitted to the analogue response, phase included, up to 0.46 of the host
+ * rate, and any notch below Nyquist is placed exactly. */
+#define MD12_IIR_TAPS 16
+#define MD12_IIR_SECTIONS 6
+typedef struct md12_iir {
+    float b[MD12_IIR_TAPS], x[MD12_IIR_TAPS];
+    float a1[MD12_IIR_SECTIONS], a2[MD12_IIR_SECTIONS];
+    float y1[MD12_IIR_SECTIONS], y2[MD12_IIR_SECTIONS];
+    unsigned nb, ns, xpos;
+} md12_iir;
+
 /* ---- Clock: frames and channel slots against the host sample clock ------ */
 typedef struct md12_clock {
     uint32_t den, slot_num;   /* in host samples, num / den */
@@ -106,6 +122,7 @@ void md12_clock_init(md12_clock *k, uint32_t host_rate);
  * Host audio in, 12-bit codes out at the frame rate. speed is the 45 rpm
  * trick: the input is sampled as if played that many times faster. */
 typedef struct md12_input {
+    md12_iir aa;
     float hist[2 * MD12_TAPS];
     int64_t seen;            /* host samples received */
     int64_t t_whole;         /* next sampling instant, in host samples, */
@@ -136,7 +153,7 @@ typedef struct md12_machine {
     md12_clock clock;
     md12_voice voice[MD12_CHANNELS];
     md12_render render[MD12_CHANNELS];
-    float last[MD12_CHANNELS];
+    md12_iir fixed[4];
     uint8_t plugged;
     float mix_gain;
 } md12_machine;

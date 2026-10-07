@@ -1,0 +1,98 @@
+* SP-1200 sample input anti-aliasing filter, +SMPAMP.V (preamp output) to IC75 LF398 pin 3
+*
+* Read from the SP-1200 service manual, schematic SK103 rev D, page 14 of 18
+* "Input ADC" (sp1200_service.pdf page 83). Cross-checked against the SP-12
+* service manual, S-7600-001 page 17 of 21 (sp12_service.pdf page 79): every
+* value agrees except R8. The SP-12 drawing also has two 10uF tantalums back to
+* back ("klug") in series ahead of R36, which the SP-1200 drawing does not; the
+* SP-1200 has its equivalent at the front panel level pot instead (S-7601-001
+* page 2), ahead of the preamp. Topology: three state-variable sections, each an
+* inverting summer, a lossy inverting integrator and an ideal inverting
+* integrator, with the third output fed back to the summer through 10.0K. The
+* three outputs of each section are weighted into the next section's summing
+* node; the last section's weights feed a lossy integrator (R6, C51).
+* All TL084 sections are ideal (gain 1e7 VCVS), so the response is that of the
+* drawn part values only.
+*
+* r8val: SP-1200 drawing says 6.19K 1% (an E96 value). The SP-12 drawing says
+* 6.9K 1%, which is not an E96 value (nearest are 6.81K and 6.98K), so it reads
+* as a drafting slip; the run also writes the 6.9K response for comparison.
+
+.param r8val=6.19k
+
+.subckt OPAMP inp inn out
+E1 out 0 inp inn 1e7
+.ends
+
+V1 in 0 DC 0 AC 1 ; +SMPAMP.V, preamp IC101 pin 14 (SK103 p6), ideal source
+
+* section 1
+R36 in s1 10k ; R36 10K 1%, SK103 p14
+R40 s1 v11 10.0k ; R40 10.0K 1%, SK103 p14, IC101 pin 9 to pin 8
+R34 v13 s1 10.0k ; R34 10.0K 1%, SK103 p14, IC92 pin 1 back to IC101 pin 9
+XIC101C 0 s1 v11 OPAMP ; IC101 TL084 pins 8 9 10, SK103 p14
+R44 v11 s12 19.1k ; R44 19.1K 1%, SK103 p14
+R50 s12 v12 21.0k ; R50 21.0K 1%, SK103 p14
+C84 s12 v12 1000p ; C84 1000pF poly, SK103 p14
+XIC101B 0 s12 v12 OPAMP ; IC101 TL084 pins 5 6 7, SK103 p14
+R27 v12 s13 19.1k ; R27 19.1K 1%, SK103 p14
+C66 s13 v13 1000p ; C66 1000pF poly, SK103 p14
+XIC92A 0 s13 v13 OPAMP ; IC92 TL084 pins 1 2 3, SK103 p14
+R22 v11 s2 107k ; R22 107K 1%, SK103 p14
+R23 v12 s2 118k ; R23 118K 1%, SK103 p14
+R25 v13 s2 14.7k ; R25 14.7K 1%, SK103 p14
+
+* section 2
+R18 s2 v21 10.0k ; R18 10.0K 1%, SK103 p14, IC92 pin 6 to pin 7
+R20 v23 s2 10.0k ; R20 10.0K 1%, SK103 p14, IC92 pin 8 back to IC92 pin 6
+XIC92B 0 s2 v21 OPAMP ; IC92 TL084 pins 5 6 7, SK103 p14
+R26 v21 s22 13.3k ; R26 13.3K 1%, SK103 p14
+R28 s22 v22 43.2k ; R28 43.2K 1%, SK103 p14
+C67 s22 v22 1000p ; C67 1000pF poly, SK103 p14
+XIC92D 0 s22 v22 OPAMP ; IC92 TL084 pins 12 13 14, SK103 p14
+R24 v22 s23 13.3k ; R24 13.3K 1%, SK103 p14
+C65 s23 v23 1000p ; C65 1000pF poly, SK103 p14
+XIC92C 0 s23 v23 OPAMP ; IC92 TL084 pins 8 9 10, SK103 p14
+R16 v21 s3 124k ; R16 124K 1%, SK103 p14
+R15 v22 s3 402k ; R15 402K 1%, SK103 p14
+R13 v23 s3 47.5k ; R13 47.5K 1%, SK103 p14
+
+* section 3
+R17 s3 v31 10.0k ; R17 10.0K 1%, SK103 p14, IC76 pin 13 to pin 14
+R11 v33 s3 10.0k ; R11 10.0K 1%, SK103 p14, IC76 pin 1 back to IC76 pin 13
+XIC76D 0 s3 v31 OPAMP ; IC76 TL084 pins 12 13 14, SK103 p14
+R9 v31 s32 12.1k ; R9 12.1K 1%, SK103 p14
+R7 s32 v32 162k ; R7 162K 1%, SK103 p14
+C53 s32 v32 1000p ; C53 1000pF poly, SK103 p14
+XIC76C 0 s32 v32 OPAMP ; IC76 TL084 pins 8 9 10, SK103 p14
+R14 v32 s33 12.1k ; R14 12.1K 1%, SK103 p14
+C55 s33 v33 1000p ; C55 1000pF poly, SK103 p14
+XIC76A 0 s33 v33 OPAMP ; IC76 TL084 pins 1 2 3, SK103 p14
+R8 v31 s4 {r8val} ; R8 6.19K 1% on SK103 p14; 6.9K 1% on SP-12 p17 (DRAWINGS DISAGREE)
+R10 v32 s4 82.5k ; R10 82.5K 1%, SK103 p14
+R12 v33 s4 3.92k ; R12 3.92K 1%, SK103 p14
+
+* output lossy integrator
+R6 s4 out 31.6k ; R6 31.6K 1%, SK103 p14
+C51 s4 out 1000p ; C51 1000pF poly, SK103 p14
+XIC76B 0 s4 out OPAMP ; IC76 TL084 pins 5 6 7, SK103 p14; out drives IC75 LF398 pin 3
+R142 s4 wiper 1.5Meg ; R142 1.5M 5%, SK103 p14, offset trim into a virtual ground (no AC effect)
+VRT1 wiper 0 DC 0 ; RT1 100K trimmer wiper between +15 V and -15 V, SK103 p14, AC ground
+
+.control
+set wr_singlescale
+set wr_vecnames
+option numdgt=8
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata aa.dat mag_db phase_deg
+alterparam r8val=6.9k
+reset
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata aa_sp12r8.dat mag_db phase_deg
+.endc
+
+.end

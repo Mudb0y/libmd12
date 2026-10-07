@@ -1,17 +1,26 @@
 #include "internal.h"
 
+static const md12_proto *const fixed_proto[4] = {
+    &md12_proto_fixed3, &md12_proto_fixed4, &md12_proto_fixed5, &md12_proto_fixed6,
+};
+
 void md12_machine_init(md12_machine *m, const md12_calib *c, uint32_t host_rate)
 {
     int ch;
 
     m->cal = *c;
+    for (ch = 0; ch < 4; ch++)
+        md12_iir_design(&m->fixed[ch], fixed_proto[ch], c->fixed_scale[ch], host_rate);
     md12_clock_init(&m->clock, host_rate);
     for (ch = 0; ch < MD12_CHANNELS; ch++) {
         m->voice[ch].active = 0;
         md12_render_init(&m->render[ch]);
     }
     m->plugged = 0;
-    m->mix_gain = 1.0f;
+    /* Each channel reaches the mix amplifier through its 1.0K jack resistor
+     * and 22K; the mix volume is a 10K rheostat in the feedback (RT9), so
+     * full volume is 10K / 23K. */
+    m->mix_gain = 10.0f / 23.0f;
 }
 
 void md12_machine_trigger(md12_machine *m, int channel, const uint16_t *mem,
@@ -58,7 +67,7 @@ void md12_machine_process(md12_machine *m, const md12_outputs *o, int n)
 
         for (ch = 0; ch < MD12_CHANNELS; ch++) {
             float raw = md12_render_out(&m->render[ch]);
-            float filtered = raw;
+            float filtered = ch >= 2 && ch < 6 ? md12_iir_run(&m->fixed[ch - 2], raw) : raw;
 
             if (ch < 6 && m->cal.split_jacks) {
                 if (o->tip[ch])

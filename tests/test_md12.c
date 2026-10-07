@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "md12.h"
+#include "../src/internal.h"
 
 static int failures, checks;
 
@@ -355,8 +356,136 @@ static void test_clock(void)
           "625 frames per 1152 samples: %d", frames);
 }
 
+/* ---- the analogue filters against ngspice -------------------------------- */
+
+typedef struct { double f, db; } point;
+
+static int load_csv(const char *name, point *pts, int max)
+{
+    char path[256], line[256];
+    FILE *fp;
+    int n = 0;
+    snprintf(path, sizeof path, "tests/data/spice_%s.csv", name);
+    fp = fopen(path, "r");
+    if (!fp)
+        return 0;
+    if (!fgets(line, sizeof line, fp)) {
+        fclose(fp);
+        return 0;
+    }
+    while (n < max && fgets(line, sizeof line, fp)) {
+        double ph;
+        if (sscanf(line, "%lf,%lf,%lf", &pts[n].f, &pts[n].db, &ph) == 3)
+            n++;
+    }
+    fclose(fp);
+    return n;
+}
+
+static double iir_db(const md12_iir *f, double fs, double hz)
+{
+    double w = 2.0 * M_PI * hz / fs, re = 0.0, im = 0.0, mag;
+    unsigned k, s;
+    for (k = 0; k < f->nb; k++) {
+        re += f->b[k] * cos(w * k);
+        im -= f->b[k] * sin(w * k);
+    }
+    mag = sqrt(re * re + im * im);
+    for (s = 0; s < f->ns; s++) {
+        double ar = 1.0 + f->a1[s] * cos(w) + f->a2[s] * cos(2 * w);
+        double ai = -f->a1[s] * sin(w) - f->a2[s] * sin(2 * w);
+        mag /= sqrt(ar * ar + ai * ai);
+    }
+    return db(mag);
+}
+
+/* Worst error in dB against the circuit, below 20 kHz and 0.45 of the host
+ * rate, wherever the circuit is within 30 dB of its reference. */
+static double filter_error(const md12_proto *p, const char *csv, double fs, double ref_hz, double *at)
+{
+    static point pts[2000];
+    md12_iir f;
+    int n = load_csv(csv, pts, 2000), i;
+    double ref = 0.0, worst = 0.0;
+    if (!n)
+        return 1e9;
+    for (i = 0; i < n; i++)
+        if (pts[i].f <= ref_hz)
+            ref = pts[i].db;
+    if (ref_hz <= 10.0)
+        ref = pts[0].db;
+    md12_iir_design(&f, p, 1.0, fs);
+    for (i = 0; i < n; i++) {
+        double e;
+        if (pts[i].f < 20.0 || pts[i].f > 20000.0 || pts[i].f > 0.45 * fs || pts[i].db - ref < -30.0)
+            continue;
+        e = fabs(iir_db(&f, fs, pts[i].f) - (pts[i].db - ref));
+        if (e != e)
+            e = 1e9;
+        if (e > worst) {
+            worst = e;
+            *at = pts[i].f;
+        }
+    }
+    return worst;
+}
+
+static void test_filters(void)
+{
+    static const struct { const md12_proto *p; const char *csv; double ref; } cases[] = {
+        {&md12_proto_fixed3, "fixed3", 0.0}, {&md12_proto_fixed4, "fixed4", 0.0},
+        {&md12_proto_fixed5, "fixed5", 0.0}, {&md12_proto_fixed6, "fixed6", 0.0},
+        {&md12_proto_dynout, "dynout", 1000.0},
+    };
+    static const double rates[] = {44100.0, 48000.0, 96000.0};
+    int c, r;
+    for (c = 0; c < 5; c++)
+        for (r = 0; r < 3; r++) {
+            double at = 0.0, e = filter_error(cases[c].p, cases[c].csv, rates[r], cases[c].ref, &at);
+            printf("  %s at %.0f Hz: worst %.3f dB at %.0f Hz\n", cases[c].csv, rates[r], e, at);
+            CHECK(e < (rates[r] < 90000.0 ? 0.6 : 0.1), "%s at %.0f: %.3f dB from ngspice at %.0f Hz",
+                  cases[c].csv, rates[r], e, at);
+        }
+}
+
+/* The input path is the preamp's pole and the anti-alias filter in series:
+ * their two sweeps add in dB. Its notches must stay notches. */
+static void test_input_filter(void)
+{
+    static point aa[2000], pre[2000];
+    static const double rates[] = {44100.0, 48000.0, 96000.0};
+    static const double notch[] = {16528.6, 19334.5, 22481.2};
+    int n = load_csv("aa", aa, 2000), m = load_csv("preamp_0db", pre, 2000), r, i;
+    CHECK(n > 0 && n == m, "spice_aa.csv and spice_preamp_0db.csv");
+    for (r = 0; r < 3; r++) {
+        md12_iir f;
+        double fs = rates[r], worst = 0.0, at = 0.0, ref = aa[0].db + pre[0].db;
+        md12_iir_design(&f, &md12_proto_input, 1.0, fs);
+        for (i = 0; i < n; i++) {
+            double want = aa[i].db + pre[i].db - ref, e;
+            if (aa[i].f < 20.0 || aa[i].f > 0.45 * fs || aa[i].f > 20000.0 || want < -30.0)
+                continue;
+            e = fabs(iir_db(&f, fs, aa[i].f) - want);
+            if (e != e)
+                e = 1e9;
+            if (e > worst) {
+                worst = e;
+                at = aa[i].f;
+            }
+        }
+        printf("  input filter at %.0f Hz: worst %.3f dB at %.0f Hz\n", fs, worst, at);
+        CHECK(worst < (fs < 90000.0 ? 0.6 : 0.1), "input filter at %.0f: %.3f dB at %.0f Hz", fs, worst, at);
+        for (i = 0; i < 3; i++)
+            if (notch[i] < 0.49 * fs)
+                CHECK(iir_db(&f, fs, notch[i]) < -50.0, "notch at %.0f Hz is %.1f dB at %.0f", notch[i],
+                      iir_db(&f, fs, notch[i]), fs);
+    }
+}
+
 int main(void)
 {
+    test_filters();
+    test_input_filter();
     test_tables();
     test_voice();
     test_input();

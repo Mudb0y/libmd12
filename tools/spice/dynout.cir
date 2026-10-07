@@ -1,0 +1,45 @@
+* SP-1200 outputs 1 and 2 (dynamic filter channels) linear output stage,
+* SSM2044 pin 3 output current to the jack ring
+*
+* Read from the SP-1200 service manual, schematic SK103 rev D, page 16 of 18
+* "Dynamic Filters" (sp1200_service.pdf page 85) and page 17 of 18 "Output
+* Channels" (page 86). Cross-checked against the SP-12 service manual,
+* S-7600-001 page 20 of 21 (sp12_service.pdf page 82), where the 10 uF and the
+* 3.3k are marked "kluge" but have the same values. Channel 1 (CNL0) parts are
+* named; channel 2 (CNL1) uses identical values: R140 3.3K, C164 10uF,
+* R127 15K, C137 470pF, IC124 pins 1 2 3, R133 1.0K to J17 pin 7 (the SP-12
+* drawing labels it R133; on the SP-1200 drawing the last digit could be a 9).
+*
+* The SSM2044 output is a current (data sheet: "Current Output", output op amp
+* "required to convert the output current to a buffered voltage"). It is driven
+* here by an ideal 1 A AC current source, so mag_db is the transimpedance in dB
+* re 1 V/A (15k is 83.5 dB) and phase includes the stage's inversion.
+* Not simulated, for reference: the hold output reaches SSM2044 pin 1 through
+* R114 33K 5% with R117 200 5% to ground (x 0.006024, -44.40 dB, flat); pin 15
+* has R103 200 5% to ground; pole capacitors C143 C131 C118 0.01uF cer and
+* C119 820pF cer; Q pin 2 goes only to R111 4.7K and test point TP12.
+* The op-amp is ideal; the tantalum capacitor is ideal (no ESR or leakage).
+
+.subckt OPAMP inp inn out
+E1 out 0 inp inn 1e7
+.ends
+
+I1 0 nout DC 0 AC 1 ; IC125 SSM2044 pin 3 OUT, current flowing out of the chip, SK103 p16
+R141 nout 0 3.3k ; R141 3.3K 5%, SK103 p16, DC path for the output current
+C165 nout nsum 10u ; C165 10uF 16V tant, SK103 p16, + side at IC124 pin 13
+R124 nsum o 15k ; R124 15K 5%, SK103 p16
+C142 nsum o 470p ; C142 470pF cer, SK103 p16
+XIC124D 0 nsum o OPAMP ; IC124 TL084 pins 12 13 14, SK103 p16, output +CNLO0.V
+R134 o ring 1.0k ; R134 1.0K 5%, SK103 p17, to J18 pin 7 (ring), unloaded
+
+.control
+set wr_singlescale
+set wr_vecnames
+option numdgt=8
+ac dec 400 10 100k
+let mag_db = db(v(ring))
+let phase_deg = 180/pi*ph(v(ring))
+wrdata dynout.dat mag_db phase_deg
+.endc
+
+.end

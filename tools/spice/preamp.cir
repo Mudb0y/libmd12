@@ -1,0 +1,74 @@
+* SP-1200 sample input preamp, CN5 pin 5 (sample level pot return) to +SMPAMP.V
+*
+* Read from the SP-1200 service manual, schematic SK103 rev D, page 6 of 18
+* "LED, Input, Display Intfc." (sp1200_service.pdf page 75). Not part of the
+* requested set; included because its feedback capacitors put a first-order
+* pole near 31 kHz ahead of the anti-aliasing filter in every gain setting.
+*
+* IC101 (pins 12 13 14) is an inverting amplifier: + input grounded, R66 100K
+* always in from the input, R64 1.0M with C94 5pF always in feedback. IC102
+* 4053 section A (pin 11, +GAIN1.D) switches R67 11K from the input to either
+* the summing node (A high) or ground (A low). Section B (pin 10, -GAIN2.D)
+* switches the far end of R61 110K with C91 47pF (other end at the output) to
+* either the summing node (B high) or ground (B low). Section C is unused; INH
+* (pin 6) is -INPUT.D. Gains: A low B high 0 dB, A high B low 40 dB, both
+* high or both low 20 dB (two different feedback networks).
+* Not simulated: ahead of CN5 pin 5 the front panel (S-7601-001 page 2) has the
+* RT11 10K log level pot and two 10uF tantalums in series back to back, marked
+* KLUGE, about 5 uF, which with 9.9K or 100K input resistance gives a high-pass
+* near 3.2 Hz or 0.32 Hz. The 4053 on-resistance (not on the drawing, of order
+* 100 ohms with these supplies) is ignored: switches are 1 milliohm or open.
+* The op-amp is ideal.
+
+.param ga=0
+.param gb=1
+
+.subckt OPAMP inp inn out
+E1 out 0 inp inn 1e7
+.ends
+
+V1 in 0 DC 0 AC 1 ; CN5 pin 5, from the front panel sample level pot, SK103 p6
+R66 in s 100k ; R66 100K 5%, SK103 p6
+R67 in coma 11k ; R67 11K 5%, SK103 p6, to IC102 pin 14 (COM A)
+RSWA1 coma s {ga > 0.5 ? 1m : 1e13} ; IC102 4053 A1 (pin 13) to the summing node, SK103 p6
+RSWA0 coma 0 {ga > 0.5 ? 1e13 : 1m} ; IC102 4053 A0 (pin 12) to ground, SK103 p6
+R64 s out 1.0Meg ; R64 1.0M 5%, SK103 p6
+C94 s out 5p ; C94 5pF cer, SK103 p6
+R61 comb out 110k ; R61 110K 5%, SK103 p6, from IC102 pin 15 (COM B)
+C91 comb out 47p ; C91 47pF cer, SK103 p6
+RSWB1 comb s {gb > 0.5 ? 1m : 1e13} ; IC102 4053 B1 (pin 1) to the summing node, SK103 p6
+RSWB0 comb 0 {gb > 0.5 ? 1e13 : 1m} ; IC102 4053 B0 (pin 2) to ground, SK103 p6
+XIC101D 0 s out OPAMP ; IC101 TL084 pins 12 13 14, SK103 p6, output +SMPAMP.V
+
+.control
+set wr_singlescale
+set wr_vecnames
+option numdgt=8
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata preamp_0db.dat mag_db phase_deg
+alterparam ga=1
+alterparam gb=0
+reset
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata preamp_40db.dat mag_db phase_deg
+alterparam ga=1
+alterparam gb=1
+reset
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata preamp_20db_a1b1.dat mag_db phase_deg
+alterparam ga=0
+alterparam gb=0
+reset
+ac dec 400 10 100k
+let mag_db = db(v(out))
+let phase_deg = 180/pi*ph(v(out))
+wrdata preamp_20db_a0b0.dat mag_db phase_deg
+.endc
+
+.end

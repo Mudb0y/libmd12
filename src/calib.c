@@ -8,6 +8,7 @@ void md12_calib_sp1200(md12_calib *c)
 {
     c->adc_offset = 4.5f;
     c->split_jacks = 1;
+    c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
 }
 
 /* SP-12 service manual, 1985: RT1 is trimmed until the display reads 800.
@@ -16,4 +17,5 @@ void md12_calib_sp12(md12_calib *c)
 {
     c->adc_offset = 0.5f;
     c->split_jacks = 0;
+    c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
 }

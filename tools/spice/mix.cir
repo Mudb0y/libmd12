@@ -1,0 +1,76 @@
+* SP-1200 mix output, one channel's source to the MIX OUT jack tip, volume at full
+*
+* Read from the SP-1200 service manual, schematic SK103 rev D, page 17 of 18
+* "Output Channels" (sp1200_service.pdf page 86), page 15 of 18 "DACS and Demux"
+* (page 84) for outputs 7 and 8, and the front panel drawing S-7601-001 page 2
+* of 2 (page 69) for the mix volume pot. Cross-checked against the SP-12
+* manual, S-7600-001 page 19 of 21, which differs only in R68 (1.0K there).
+*
+* Every channel reaches the mix through its jack: source, 1.0K series resistor,
+* the jack's normally closed switch contact, then 22K to the IC124 summing node.
+* Outputs 1 to 6 use the ring (filtered) contact of a stereo jack; outputs 7 and
+* 8 use the tip contact of a mono jack (R76/J12 and R75/J11 on page 15, the
+* switch contact being the net named +CNLSH6.V / +CNLSH7.V on page 17). So the
+* input resistance is 23K for all eight channels, and plugging into a channel's
+* jack removes that channel from the mix.
+* RT9 (MIX VOL, 10K log) has its wiper tied to its CW end at the summing node
+* and its other end at the op-amp output: a 0 to 10K feedback rheostat, 10K at
+* full CW. Gain is -R(RT9)/23K, -7.23 dB at full volume, flat with an ideal
+* op-amp because the mix path has no capacitors.
+* Only channel 3 is driven; the other sources are AC ground (ideal op-amp
+* outputs), which does not change the gain into a virtual ground.
+
+.param rt9=10k
+
+.subckt OPAMP inp inn out
+E1 out 0 inp inn 1e7
+.ends
+
+V3 s3 0 DC 0 AC 1 ; output 3 filter output, IC122 pin 14, SK103 p17 (driven)
+R131 s3 r3 1.0k ; R131 1.0K 5%, SK103 p17, to J16 pin 7 ring and switch pin 8
+R62 r3 sum 22k ; R62 22K 5%, SK103 p17
+
+V1 s1 0 DC 0 ; output 1, +CNLO0.V, IC124 pin 14, SK103 p16
+R134 s1 r1 1.0k ; R134 1.0K 5%, SK103 p17, J18
+R65 r1 sum 22k ; R65 22K 5%, SK103 p17
+V2 s2 0 DC 0 ; output 2, +CNLO1.V, IC124 pin 1, SK103 p16
+R133 s2 r2 1.0k ; R133 1.0K 5%, SK103 p17, J17 (label R133 on the SP-12; last digit unclear on the SP-1200)
+R63 r2 sum 22k ; R63 22K 5%, SK103 p17
+V4 s4 0 DC 0 ; output 4 filter output, IC122 pin 1, SK103 p17
+R130 s4 r4 1.0k ; R130 1.0K 5%, SK103 p17, J15
+R60 r4 sum 22k ; R60 22K 5%, SK103 p17
+V5 s5 0 DC 0 ; output 5 filter output, IC121 pin 14, SK103 p17
+R129 s5 r5 1.0k ; R129 1.0K 5%, SK103 p17, J14
+R59 r5 sum 22k ; R59 22K 5%, SK103 p17
+V6 s6 0 DC 0 ; output 6 filter output, IC121 pin 1, SK103 p17
+R128 s6 r6 1.0k ; R128 1.0K 5%, SK103 p17, J13
+R58 r6 sum 22k ; R58 22K 5%, SK103 p17
+V7 s7 0 DC 0 ; output 7 hold buffer, IC111 pin 1, SK103 p15
+R76 s7 r7 1.0k ; R76 1.0K 5%, SK103 p15, J12 tip, switch pin 6 is +CNLSH6.V
+R56 r7 sum 22k ; R56 22K 5%, SK103 p17
+V8 s8 0 DC 0 ; output 8 hold buffer, IC111 pin 7, SK103 p15
+R75 s8 r8 1.0k ; R75 1.0K 5%, SK103 p15, J11 tip, switch pin 6 is +CNLSH7.V
+R54 r8 sum 22k ; R54 22K 5%, SK103 p17
+
+RRT9 sum out {rt9} ; RT9 MIX VOL 10K log, front panel S-7601-001 p2, via CN5 pins 3 and 6
+XIC124C 0 sum out OPAMP ; IC124 TL084 pins 8 9 10, SK103 p17, pin 10 to ground and CN5 pin 1
+R68 out tip 100 ; R68 100 5% on SK103 p17 (1.0K 5% on SP-12 p19), to J19 tip, unloaded
+* metronome injection into the summing node, front panel S-7601-001 p2: RT10
+* 10K log (METRONOME VOL) from CN2 pin 2 to ground, wiper through a 10K 5%
+* resistor whose designator is overstruck (reads R3 or R9) to CN2 pin 3. The
+* metronome source is taken as AC ground and the wiper at mid track.
+RMET sum mw 10k ; R3 or R9 (label unclear) 10K 5%, front panel S-7601-001 p2
+RRT10A mw 0 5k ; RT10 10K log, lower half, front panel S-7601-001 p2
+RRT10B mw 0 5k ; RT10 10K log, upper half to the grounded metronome source, front panel S-7601-001 p2
+
+.control
+set wr_singlescale
+set wr_vecnames
+option numdgt=8
+ac dec 400 10 100k
+let mag_db = db(v(tip))
+let phase_deg = 180/pi*ph(v(tip))
+wrdata mix.dat mag_db phase_deg
+.endc
+
+.end

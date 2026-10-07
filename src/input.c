@@ -20,6 +20,9 @@ void md12_input_init(md12_input *in, const md12_calib *c, uint32_t host_rate,
     in->inv_den = 1.0f / (float)in->den;
     in->gain = 1.0f;
     in->offset = c->adc_offset;
+    /* A record played faster puts its content higher, so in the record's
+     * own time the anti-alias filter sits lower by the same factor. */
+    md12_iir_design(&in->aa, &md12_proto_input, (double)speed_den / speed_num, host_rate);
 }
 
 void md12_input_set_gain(md12_input *in, float gain)
@@ -52,7 +55,7 @@ int md12_input_process(md12_input *in, const float *x, int n, uint16_t *codes,
 
     for (i = 0; i < n; i++) {
         int64_t s = in->seen++;
-        in->hist[s & (HIST - 1)] = x[i] * in->gain;
+        in->hist[s & (HIST - 1)] = md12_iir_run(&in->aa, x[i] * in->gain);
 
         /* The hold takes the input at each sampling instant; the input is
          * band-limited host audio, so its value between host samples is

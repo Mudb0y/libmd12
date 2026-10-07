@@ -1,0 +1,45 @@
+* SP-1200 output 5 (+CNLSH4.V, CNL4 OUT) fixed filter, hold buffer output to jack J14 ring
+*
+* Read from the SP-1200 service manual, schematic SK103 rev D, page 17 of 18
+* "Output Channels" (sp1200_service.pdf page 86). Cross-checked against the
+* SP-12 service manual, S-7600-001 page 19 of 21 (sp12_service.pdf page 81):
+* every filter value agrees. Topology: a passive RC pole (R79, C113) feeding two
+* unity-gain Sallen-Key sections (IC121 followers), each with the 0.01 uF on the
+* first node returned to the follower output and 1000 pF to ground on the
+* follower input. The filtered signal leaves through R129 1.0K to the jack ring;
+* the unfiltered hold signal goes to the jack tip through R160 1.0K (flat, not
+* simulated). The ring is unloaded: with a plug in the jack its switch is open,
+* so R59 22K to the mix bus is disconnected. Capacitor ground returns go to a
+* bus tied to board ground and the jack sleeve (AC ground). Op-amps are ideal.
+
+.subckt OPAMP inp inn out
+E1 out 0 inp inn 1e7
+.ends
+
+V1 in 0 DC 0 AC 1 ; +CNLSH4.V, hold buffer output (SK103 p15), ideal source
+
+R79 in na 5.1k ; R79 5.1k 5%, SK103 p17
+C113 na 0 4700p ; C113 4700pF 10%, SK103 p17
+R86 na nb 2.4k ; R86 2.4k 5%, SK103 p17
+R108 nb nc 4.3k ; R108 4.3k 5%, SK103 p17
+C121 nc 0 1000p ; C121 1000pF 10%, SK103 p17
+C127 nb o1 0.01u ; C127 0.01uF 10%, SK103 p17, to follower output
+XIC121_8_9_10 nc o1 o1 OPAMP ; IC121 TL084 follower, SK103 p17
+R93 o1 nd 4.3k ; R93 4.3k 5%, SK103 p17
+R120 nd ne 4.3k ; R120 4.3k 5%, SK103 p17
+C133 ne 0 1000p ; C133 1000pF 10%, SK103 p17
+C139 nd o2 0.01u ; C139 0.01uF 10%, SK103 p17, to follower output
+XIC121_12_13_14 ne o2 o2 OPAMP ; IC121 TL084 follower, SK103 p17
+R129 o2 ring 1.0k ; R129 1.0K 5%, SK103 p17, to J14 pin 7 (ring)
+
+.control
+set wr_singlescale
+set wr_vecnames
+option numdgt=8
+ac dec 400 10 100k
+let mag_db = db(v(ring))
+let phase_deg = 180/pi*ph(v(ring))
+wrdata fixed5.dat mag_db phase_deg
+.endc
+
+.end
