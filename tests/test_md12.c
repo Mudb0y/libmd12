@@ -547,8 +547,91 @@ static void test_effect(void)
     CHECK(memcmp(out, out2, sizeof out) == 0, "effect output depends on block size");
 }
 
+/* ---- the dynamic filter -------------------------------------------------- */
+
+/* The capacitor against ngspice's transient of the same network: GAIN goes
+ * low at 1 ms for 5 ms. */
+static void test_envelope(void)
+{
+    static const double at[] = {0.0009, 0.0024, 0.0034, 0.0060, 0.0080, 0.020, 0.050, 0.107, 0.300};
+    char line[256];
+    FILE *fp = fopen("tests/data/spice_env.csv", "r");
+    md12_calib cal;
+    md12_dyn d;
+    double fs = 96000.0, t = 0.0;
+    int n = 0, k;
+    double st[9] = {0}, sv[9] = {0};
+
+    CHECK(fp != NULL, "spice_env.csv");
+    if (!fp)
+        return;
+    /* The sample nearest each check time. */
+    if (fgets(line, sizeof line, fp))
+        while (fgets(line, sizeof line, fp)) {
+            double time, gain, cap, pin;
+            if (sscanf(line, "%lf,%lf,%lf,%lf", &time, &gain, &cap, &pin) != 4)
+                continue;
+            for (k = 0; k < 9; k++)
+                if (st[k] == 0.0 || fabs(time - at[k]) < fabs(st[k] - at[k])) {
+                    st[k] = time;
+                    sv[k] = cap;
+                }
+        }
+    fclose(fp);
+
+    md12_calib_sp1200(&cal);
+    md12_dyn_init(&d, &cal, 0, fs);
+    for (k = 0; k < 9; k++) {
+        while (t < st[k]) {
+            if (n == (int)(0.001 * fs))
+                md12_dyn_trigger(&d);
+            md12_dyn_run(&d, 0.0f);
+            n++;
+            t = n / fs;
+        }
+        CHECK(fabs(d.vc - sv[k]) < 0.02 + 0.01 * sv[k], "capacitor at %.4f s: %.3f V, ngspice %.3f V",
+              st[k], d.vc, sv[k]);
+    }
+}
+
+/* At rest the four matched poles sit at the trimmed frequency, so 1 kHz is
+ * 12 dB down; a trigger opens the filter and it closes again. */
+static void test_dyn_response(void)
+{
+    enum { N = 48000 };
+    static float in[N], out[N];
+    md12_calib cal;
+    md12_dyn d;
+    double amp;
+    int i;
+
+    md12_calib_sp1200(&cal);
+    for (i = 0; i < N; i++)
+        in[i] = (float)(0.01 * sin(2.0 * M_PI * 1000.0 * i / 48000.0));
+    md12_dyn_init(&d, &cal, 0, 48000.0);
+    for (i = 0; i < N; i++)
+        out[i] = md12_dyn_run(&d, in[i]);
+    amp = tone_amp(out + 8192, 32768, 48000, 1000.0);
+    CHECK(fabs(db(amp / 0.01) + 12.04) < 0.3, "1 kHz at rest: %.2f dB, want -12.04", db(amp / 0.01));
+
+    for (i = 0; i < N; i++)
+        in[i] = (float)(0.01 * sin(2.0 * M_PI * 5000.0 * i / 48000.0));
+    md12_dyn_init(&d, &cal, 0, 48000.0);
+    md12_dyn_trigger(&d);
+    for (i = 0; i < N; i++)
+        out[i] = md12_dyn_run(&d, in[i]);
+    {
+        double early = tone_amp(out + 480, 960, 48000, 5000.0);
+        double late = tone_amp(out + 38400, 4800, 48000, 5000.0);
+        CHECK(db(early / 0.01) > -3.0, "5 kHz just after a trigger: %.1f dB", db(early / 0.01));
+        CHECK(db(late / 0.01) < -40.0, "5 kHz 0.8 s later: %.1f dB", db(late / 0.01));
+    }
+}
+
 int main(void)
 {
+    test_envelope();
+    test_dyn_response();
     test_effect();
     test_filters();
     test_input_filter();

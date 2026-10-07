@@ -11,6 +11,8 @@ void md12_machine_init(md12_machine *m, const md12_calib *c, uint32_t host_rate)
     m->cal = *c;
     for (ch = 0; ch < 4; ch++)
         md12_iir_design(&m->fixed[ch], fixed_proto[ch], c->fixed_scale[ch], host_rate);
+    md12_dyn_init(&m->dyn[0], c, 0, host_rate);
+    md12_dyn_init(&m->dyn[1], c, 1, host_rate);
     md12_clock_init(&m->clock, host_rate);
     for (ch = 0; ch < MD12_CHANNELS; ch++) {
         m->voice[ch].active = 0;
@@ -30,6 +32,8 @@ void md12_machine_trigger(md12_machine *m, int channel, const uint16_t *mem,
         return;
     md12_voice_start(&m->voice[channel], mem, length, md12_tune_byte(tune_index),
                      level_index);
+    if (channel < 2)
+        md12_dyn_trigger(&m->dyn[channel]);
 }
 
 void md12_machine_set_plugged(md12_machine *m, uint8_t mask)
@@ -67,7 +71,8 @@ void md12_machine_process(md12_machine *m, const md12_outputs *o, int n)
 
         for (ch = 0; ch < MD12_CHANNELS; ch++) {
             float raw = md12_render_out(&m->render[ch]);
-            float filtered = ch >= 2 && ch < 6 ? md12_iir_run(&m->fixed[ch - 2], raw) : raw;
+            float filtered = ch < 2 ? md12_dyn_run(&m->dyn[ch], raw)
+                           : ch < 6 ? md12_iir_run(&m->fixed[ch - 2], raw) : raw;
 
             if (ch < 6 && m->cal.split_jacks) {
                 if (o->tip[ch])

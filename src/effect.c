@@ -36,7 +36,13 @@ void md12_effect_init(md12_effect *e, const md12_calib *c, uint32_t host_rate)
     md12_clock_init(&e->clock, host_rate);
     md12_render_init(&e->render);
     md12_iir_design(&e->fixed, fixed_proto[0], c->fixed_scale[0], host_rate);
+    md12_dyn_init(&e->dyn, c, 1, host_rate);
     restart(e);
+}
+
+void md12_effect_trigger(md12_effect *e)
+{
+    md12_dyn_trigger(&e->dyn);
 }
 
 void md12_effect_set(md12_effect *e, int channel, int tune_index, int level_index, int tap)
@@ -51,6 +57,8 @@ void md12_effect_set(md12_effect *e, int channel, int tune_index, int level_inde
         tune_index = 31;
     if (channel != e->channel && channel >= 2 && channel < 6)
         md12_iir_design(&e->fixed, fixed_proto[channel - 2], e->cal.fixed_scale[channel - 2], e->host_rate);
+    if (channel != e->channel && channel < 2)
+        md12_dyn_init(&e->dyn, &e->cal, channel, e->host_rate);
     e->channel = channel;
     e->level = level_index < 0 ? 0 : level_index > MD12_LEVEL_MAX ? MD12_LEVEL_MAX : level_index;
     e->tap = tap;
@@ -124,7 +132,8 @@ void md12_effect_process(md12_effect *e, const float *in, float *out, int n)
         k->whole--;
 
         raw = md12_render_out(&e->render);
-        y = e->channel >= 2 && e->channel < 6 ? md12_iir_run(&e->fixed, raw) : raw;
+        y = e->channel < 2 ? md12_dyn_run(&e->dyn, raw)
+          : e->channel < 6 ? md12_iir_run(&e->fixed, raw) : raw;
         if (e->tap == MD12_TAP_MIX)
             out[i] = -e->mix_gain * y;
         else if (e->channel < 6 && e->cal.split_jacks)

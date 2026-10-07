@@ -27,4 +27,13 @@ extern const md12_proto md12_proto_dynout;
 void md12_iir_design(md12_iir *f, const md12_proto *p, double scale, double fs);
 float md12_iir_run(md12_iir *f, float x);
 
+#define MD12_LADDER_LO (-14)
+#define MD12_LADDER_STEPS 8
+#define MD12_LADDER_ROWS 129
+extern const float md12_ladder_tab[MD12_LADDER_ROWS][4];
+
+void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs);
+void md12_dyn_trigger(md12_dyn *d);
+float md12_dyn_run(md12_dyn *d, float x);
+
 #endif

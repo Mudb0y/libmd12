@@ -57,6 +57,14 @@ typedef struct md12_calib {
     /* Outputs 3 to 6: each fixed filter's frequencies over the schematic's,
      * for parts that sit away from their nominal values. */
     float fixed_scale[4];
+    /* Outputs 1 and 2: the SSM2044's pole frequency at rest, set by RT6 and
+     * RT5, which are trimmed until the filter oscillates at this frequency. */
+    float dyn_rest_hz[2];
+    /* How long the CPU holds GAIN1 or GAIN2 low to fire the filter, s. */
+    float dyn_gate_s;
+    /* The SSM2044's thermal voltage, kT/q, which sets its volts per octave;
+     * the chip has no temperature compensation. */
+    float dyn_vt;
 } md12_calib;
 
 void md12_calib_sp1200(md12_calib *c);
@@ -107,6 +115,19 @@ typedef struct md12_iir {
     unsigned nb, ns, xpos;
 } md12_iir;
 
+/* ---- The dynamic filter of outputs 1 and 2 -------------------------------
+ * The SSM2044 at zero resonance, its cutoff driven by the 10 uF capacitor
+ * that a trigger discharges, and the output stage after it. */
+#define MD12_DIODE_POINTS 128
+typedef struct md12_dyn {
+    float vc, vrest, decay, gate_left, gate_len, dt;
+    float oct_per_volt, lr0;
+    float v1[4], v2[4], y[4], t[4];
+    float in_scale, out_scale;
+    float diode[MD12_DIODE_POINTS];
+    md12_iir out;
+} md12_dyn;
+
 /* ---- Clock: frames and channel slots against the host sample clock ------ */
 typedef struct md12_clock {
     uint32_t den, slot_num;   /* in host samples, num / den */
@@ -154,6 +175,7 @@ typedef struct md12_machine {
     md12_voice voice[MD12_CHANNELS];
     md12_render render[MD12_CHANNELS];
     md12_iir fixed[4];
+    md12_dyn dyn[2];
     uint8_t plugged;
     float mix_gain;
 } md12_machine;
@@ -182,6 +204,7 @@ typedef struct md12_effect {
     md12_clock clock;
     md12_render render;
     md12_iir fixed;
+    md12_dyn dyn;
     uint16_t buf[MD12_EFFECT_BUF];
     uint32_t written, addr;
     uint32_t host_rate;
@@ -194,6 +217,8 @@ void md12_effect_init(md12_effect *e, const md12_calib *c, uint32_t host_rate);
 /* channel 0 is output 1; tap is MD12_TAP_TIP, _RING or _MIX. */
 void md12_effect_set(md12_effect *e, int channel, int tune_index, int level_index, int tap);
 void md12_effect_set_gain(md12_effect *e, float gain);
+/* Fires the filter of outputs 1 and 2, as a pad hit would. */
+void md12_effect_trigger(md12_effect *e);
 void md12_effect_process(md12_effect *e, const float *in, float *out, int n);
 /* Delay from input to output, in host samples. */
 int md12_effect_latency(const md12_effect *e);

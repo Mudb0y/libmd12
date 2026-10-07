@@ -1,21 +1,35 @@
 #include "internal.h"
 
-/* SP-1200 service manual, 1987: RT1 is trimmed to read "804 or greater",
- * never exactly 800, and "Re-trim to approx. 804" cures clicking at silence.
- * The tip of jacks 1 to 6 is unfiltered and the ring filtered (owner's
- * manual; schematic R156 to R161). */
-void md12_calib_sp1200(md12_calib *c)
+/* What the two machines share: the fixed filters at their drawn values, the
+ * Drumulator service manual's "about 5 msec" filter trigger, and the
+ * SSM2044 at 27 C. */
+static void common(md12_calib *c)
 {
-    c->adc_offset = 4.5f;
-    c->split_jacks = 1;
     c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
+    c->dyn_gate_s = 0.005f;
+    c->dyn_vt = 0.025852f;
 }
 
-/* SP-12 service manual, 1985: RT1 is trimmed until the display reads 800.
- * Jacks 1 to 6 are filtered mono jacks. */
+/* SP-1200 service manual, 1987: RT1 is trimmed to read "804 or greater",
+ * never exactly 800, and "Re-trim to approx. 804" cures clicking at silence;
+ * the factory method trims the dynamic filters to oscillate at 1.0 kHz. The
+ * tip of jacks 1 to 6 is unfiltered and the ring filtered (owner's manual;
+ * schematic R156 to R161). */
+void md12_calib_sp1200(md12_calib *c)
+{
+    common(c);
+    c->adc_offset = 4.5f;
+    c->split_jacks = 1;
+    c->dyn_rest_hz[0] = c->dyn_rest_hz[1] = 1000.0f;
+}
+
+/* SP-12 service manual, 1985: RT1 is trimmed until the display reads 800,
+ * and the dynamic filters to oscillate at 1.3 kHz. Jacks 1 to 6 are filtered
+ * mono jacks. */
 void md12_calib_sp12(md12_calib *c)
 {
+    common(c);
     c->adc_offset = 0.5f;
     c->split_jacks = 0;
-    c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
+    c->dyn_rest_hz[0] = c->dyn_rest_hz[1] = 1300.0f;
 }
