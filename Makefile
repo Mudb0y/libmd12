@@ -56,7 +56,7 @@ build/md12: tools/md12.c tools/wav.c tools/wav.h $(LIB)
 cross:
 	mkdir -p build/cross
 	for f in $(SRC); do arm-none-eabi-gcc -mcpu=cortex-m7 -mthumb -mfpu=fpv5-sp-d16 \
-	    -mfloat-abi=hard -O2 $(WARN) -fsingle-precision-constant $(CPPFLAGS) -c $$f \
+	    -mfloat-abi=hard -O2 $(WARN) $(CPPFLAGS) -c $$f \
 	    -o build/cross/$$(basename $$f .c).o || exit 1; done
 	arm-none-eabi-size build/cross/*.o
 
