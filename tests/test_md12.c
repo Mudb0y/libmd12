@@ -102,11 +102,15 @@ static void test_tables(void)
         if (want > 255)
             want = 255;
         CHECK(md12_tune_byte(i) == want, "tune %d: %d, want %ld", i, md12_tune_byte(i), want);
-        CHECK(md12_step64(md12_tune_byte(i)) == md12_tune_byte(i) / 2 + 1, "step %d", i);
+        CHECK(md12_step128(md12_tune_byte(i), 1) == md12_tune_byte(i) + 1, "SP-1200 step %d", i);
+        CHECK(md12_step128(md12_tune_byte(i), 0) == 2 * (md12_tune_byte(i) / 2 + 1), "SP-12 step %d", i);
     }
-    CHECK(md12_step64(md12_tune_byte(16)) == 64, "unity tune is one sample per frame");
-    CHECK(md12_step64(md12_tune_byte(23)) == 96, "plus 7 is exactly 1.5");
-    CHECK(md12_step64(md12_tune_byte(8)) == 41, "minus 8 is 41/64");
+    CHECK(md12_step128(md12_tune_byte(16), 1) == 128 && md12_step128(md12_tune_byte(16), 0) == 128,
+          "unity tune is one sample per frame on both");
+    CHECK(md12_step128(md12_tune_byte(23), 1) == 192, "plus 7 is exactly 1.5");
+    CHECK(md12_step128(md12_tune_byte(8), 1) == 81 && md12_step128(md12_tune_byte(8), 0) == 82,
+          "minus 8 is 81/128 on the SP-1200, 41/64 on the SP-12");
+    CHECK(md12_midi_level(127) == 31 && md12_midi_level(64) == 16 && md12_midi_level(3) == 2, "MIDI levels");
     CHECK(md12_tune_byte(-5) == 50 && md12_tune_byte(99) == 255, "tune clamps");
     CHECK(md12_level_code(0) == 0 && md12_level_code(31) == 255 && md12_level_code(16) == 27, "level PROM");
     CHECK(md12_dac(0x800, 31) == 0.0f, "0x800 is zero");
@@ -122,11 +126,10 @@ static void test_voice(void)
     for (i = 0; i < 4096; i++)
         ramp[i] = (uint16_t)i;
 
-    for (t = 0; t < 32; t++) {
+    for (t = 0; t < 64; t++) {
         md12_voice v;
-        uint8_t pb = md12_tune_byte(t);
-        int step = md12_step64(pb), ok = 1, prev = -1;
-        md12_voice_start(&v, ramp, 4096, pb, 31);
+        int step = md12_step128(md12_tune_byte(t & 31), t >> 5), ok = 1, prev = -1;
+        md12_voice_start(&v, ramp, 4096, step, 31);
         for (i = 0; i < 64 * 10; i++) {
             int code = md12_voice_tick(&v);
             int adv = prev < 0 ? 0 : code - prev;
@@ -134,14 +137,14 @@ static void test_voice(void)
                 ok = 0;
             prev = code;
         }
-        /* After 640 frames the voice has read exactly 10 * step samples. */
+        /* After 640 frames the voice has read exactly 5 * step samples. */
         CHECK(ok, "tune %d moves 0, 1 or 2 samples a frame", t);
-        CHECK(v.addr == (uint32_t)(10 * step), "tune %d: addr %u, want %d", t, v.addr, 10 * step);
+        CHECK(v.addr == (uint32_t)(5 * step), "tune %d: addr %u, want %d", t, v.addr, 5 * step);
     }
 
     {
         md12_voice v;
-        md12_voice_start(&v, ramp, 3, md12_tune_byte(16), 31);
+        md12_voice_start(&v, ramp, 3, 128, 31);
         CHECK(md12_voice_tick(&v) == 0 && md12_voice_tick(&v) == 1 && md12_voice_tick(&v) == 2,
               "unity plays every sample");
         CHECK(!v.active && md12_voice_tick(&v) == 0x800, "voice ends and outputs zero");
@@ -149,7 +152,7 @@ static void test_voice(void)
     {
         md12_voice v;
         int a, b, c, d;
-        md12_voice_start(&v, ramp, 4, md12_tune_byte(16), 31);
+        md12_voice_start(&v, ramp, 4, 128, 31);
         md12_voice_set_loop(&v, 2);
         a = md12_voice_tick(&v); b = md12_voice_tick(&v);
         c = md12_voice_tick(&v); d = md12_voice_tick(&v);
@@ -584,7 +587,9 @@ static void test_envelope(void)
     for (k = 0; k < 9; k++) {
         while (t < st[k]) {
             if (n == (int)(0.001 * fs))
-                md12_dyn_trigger(&d);
+                d.gate_low = 1;
+            if (n == (int)(0.006 * fs))
+                d.gate_low = 0;
             md12_dyn_run(&d, 0.0f);
             n++;
             t = n / fs;
@@ -617,9 +622,12 @@ static void test_dyn_response(void)
     for (i = 0; i < N; i++)
         in[i] = (float)(0.01 * sin(2.0 * M_PI * 5000.0 * i / 48000.0));
     md12_dyn_init(&d, &cal, 0, 48000.0);
-    md12_dyn_trigger(&d);
-    for (i = 0; i < N; i++)
+    d.gate_low = 1;
+    for (i = 0; i < N; i++) {
+        if (i == 450)
+            d.gate_low = 0;
         out[i] = md12_dyn_run(&d, in[i]);
+    }
     {
         double early = tone_amp(out + 480, 960, 48000, 5000.0);
         double late = tone_amp(out + 38400, 4800, 48000, 5000.0);
@@ -628,8 +636,74 @@ static void test_dyn_response(void)
     }
 }
 
+/* ---- the operating system ------------------------------------------------ */
+
+/* A decayed sound at decay 0 steps down every 2 ticks from tick 2 and is
+ * silent at tick 62, 76 ms (firmware.md, question 1). */
+static void test_decay(void)
+{
+    enum { LEN = 20000 };
+    static uint16_t dc[LEN];
+    md12_calib cal;
+    md12_machine m;
+    md12_outputs o;
+    int i, frames = 0, first = -1, last = -1, prev = 31;
+
+    for (i = 0; i < LEN; i++)
+        dc[i] = 0xC00;
+    md12_calib_sp1200(&cal);
+    md12_machine_init(&m, &cal, 48000);
+    memset(&o, 0, sizeof o);
+    md12_machine_trigger_decay(&m, 7, dc, LEN, 0, 31);
+    /* Walk the machine frame by frame through its strobes; 48000 Hz is
+     * 1.8432 samples a frame, so 1152 samples are 625 frames. */
+    for (i = 0; i < 48000 / 4; i++) {
+        uint32_t before = m.frame;
+        md12_machine_process(&m, &o, 1);
+        if (m.frame != before) {
+            frames += (int)(m.frame - before);
+            if (m.voice[7].active && m.voice[7].level != prev) {
+                if (first < 0)
+                    first = frames;
+                prev = m.voice[7].level;
+                if (prev == 0)
+                    last = frames;
+            }
+        }
+    }
+    /* Measured from the note: 7 frames to the start, then the ticks. Tick 1
+     * comes at most a tick after the start. */
+    CHECK(first > 7 + 32 && first <= 7 + 2 * 32 + 1, "first step at frame %d", first);
+    CHECK(last - first == 60 * 32, "silent 60 ticks after the first step: %d frames", last - first);
+}
+
+/* A note on channel 1 holds the GAIN line low until the eighth tick after
+ * it, plus the routine's delay: 8.78 to 10.1 ms. */
+static void test_gate(void)
+{
+    static uint16_t snd[1000];
+    md12_calib cal;
+    md12_machine m;
+    md12_outputs o;
+    int i, k, low;
+
+    md12_calib_sp1200(&cal);
+    memset(&o, 0, sizeof o);
+    for (k = 0; k < 40; k++) {
+        md12_machine_init(&m, &cal, 96000);
+        /* Notes at different phases of the tick. */
+        md12_machine_process(&m, &o, 7 * k + 1);
+        md12_machine_trigger(&m, 0, snd, 1000, 16, 31);
+        for (low = 0, i = 0; i < 2000 && (m.dyn[0].gate_low || i == 0); i++, low++)
+            md12_machine_process(&m, &o, 1);
+        CHECK(low / 96.0 >= 8.6 && low / 96.0 <= 10.2, "GAIN low for %.2f ms", low / 96.0);
+    }
+}
+
 int main(void)
 {
+    test_decay();
+    test_gate();
     test_envelope();
     test_dyn_response();
     test_effect();

@@ -10,13 +10,12 @@ static const md12_proto *const fixed_proto[4] = {
 
 static void restart(md12_effect *e)
 {
-    uint8_t pb = md12_tune_byte(e->tune);
     float gain = e->in.gain;
 
-    /* Sampled faster by 64 / step, played back slower by step / 64. */
-    md12_input_init(&e->in, &e->cal, e->host_rate, 64u, (uint32_t)md12_step64(pb));
+    /* Sampled faster by 128 / step, played back slower by step / 128. */
+    e->step = md12_step128(md12_tune_byte(e->tune), e->cal.pitch_lsb);
+    md12_input_init(&e->in, &e->cal, e->host_rate, 128u, (uint32_t)e->step);
     e->in.gain = gain;
-    e->pitch = pb;
     e->frac = 0;
     e->written = 0;
     e->addr = 0;
@@ -33,6 +32,8 @@ void md12_effect_init(md12_effect *e, const md12_calib *c, uint32_t host_rate)
     e->tap = MD12_TAP_TIP;
     e->tune = MD12_TUNE_UNITY;
     e->mix_gain = 10.0f / 23.0f;
+    e->frame = 0;
+    e->gate_ticks = e->gate_in = 0;
     md12_clock_init(&e->clock, host_rate);
     md12_render_init(&e->render);
     md12_iir_design(&e->fixed, fixed_proto[0], c->fixed_scale[0], host_rate);
@@ -40,9 +41,13 @@ void md12_effect_init(md12_effect *e, const md12_calib *c, uint32_t host_rate)
     restart(e);
 }
 
+/* As the OS fires it: the GAIN line falls now and rises on the eighth
+ * housekeeping tick after, a tick being 32 frames. */
 void md12_effect_trigger(md12_effect *e)
 {
-    md12_dyn_trigger(&e->dyn);
+    e->dyn.gate_low = 1;
+    e->gate_ticks = MD12_GATE_TICKS;
+    e->gate_in = 0;
 }
 
 void md12_effect_set(md12_effect *e, int channel, int tune_index, int level_index, int tap)
@@ -76,7 +81,7 @@ void md12_effect_set_gain(md12_effect *e, float gain)
 int md12_effect_latency(const md12_effect *e)
 {
     /* The input's interpolator, the codes held back, and the render stage. */
-    double frames = MARGIN * 64.0 / md12_step64(e->pitch);
+    double frames = MARGIN * 128.0 / e->step;
     return MD12_TAPS + (int)(frames * e->host_rate / MD12_TICK_HZ + 0.5);
 }
 
@@ -98,9 +103,9 @@ static uint16_t play(md12_effect *e)
     else if (e->written - e->addr > MD12_EFFECT_BUF - 2)
         e->addr = e->written - MARGIN;
     code = e->buf[e->addr & (MD12_EFFECT_BUF - 1)];
-    sum = e->frac + (e->pitch & 0x7Eu) + 2u;
+    sum = e->frac + (unsigned)e->step;
     e->frac = (uint8_t)(sum & 0x7Fu);
-    e->addr += (e->pitch >> 7) + (sum >> 7);
+    e->addr += sum >> 7;
     return code;
 }
 
@@ -118,6 +123,12 @@ void md12_effect_process(md12_effect *e, const float *in, float *out, int n)
             e->buf[e->written++ & (MD12_EFFECT_BUF - 1)] = codes[j];
 
         while (k->whole < 0 || (k->whole == 0 && k->num == 0)) {
+            if (k->slot == 0) {
+                if (e->gate_in && --e->gate_in == 0)
+                    e->dyn.gate_low = 0;
+                if (e->frame++ % MD12_TICK_FRAMES == 0 && e->gate_ticks && --e->gate_ticks == 0)
+                    e->gate_in = MD12_GATE_LATE;
+            }
             if (k->slot == e->channel) {
                 float frac = k->whole < 0 ? 1.0f - (float)k->num * k->inv_den : 0.0f;
                 md12_render_set(&e->render, md12_dac(play(e), e->level), frac);

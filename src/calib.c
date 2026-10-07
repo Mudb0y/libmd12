@@ -1,13 +1,12 @@
 #include "internal.h"
 
-/* What the two machines share: the fixed filters at their drawn values, the
- * Drumulator service manual's "about 5 msec" filter trigger, and the
- * SSM2044 at 27 C. */
+/* What the two machines share: the fixed filters at their drawn values and
+ * the SSM2044 at 27 C, its frequency control input open. */
 static void common(md12_calib *c)
 {
     c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
-    c->dyn_gate_s = 0.005f;
     c->dyn_vt = 0.025852f;
+    c->dyn_pin13_ohms = 0.0f;
 }
 
 /* SP-1200 service manual, 1987: RT1 is trimmed to read "804 or greater",
@@ -20,6 +19,7 @@ void md12_calib_sp1200(md12_calib *c)
     common(c);
     c->adc_offset = 4.5f;
     c->split_jacks = 1;
+    c->pitch_lsb = 1;
     c->dyn_rest_hz[0] = c->dyn_rest_hz[1] = 1000.0f;
 }
 
@@ -31,5 +31,6 @@ void md12_calib_sp12(md12_calib *c)
     common(c);
     c->adc_offset = 0.5f;
     c->split_jacks = 0;
+    c->pitch_lsb = 0;
     c->dyn_rest_hz[0] = c->dyn_rest_hz[1] = 1300.0f;
 }

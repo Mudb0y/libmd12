@@ -57,7 +57,8 @@ static double diode_current(double v)
 void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs)
 {
     /* RT6 at its centre: the wiper's Thevenin source is 0 V behind 2.5K. */
-    double g = 1.0 / R125 + 1.0 / R118 + 1.0 / R112 + 1.0 / (R104 + RT6 / 4.0);
+    double g = 1.0 / R125 + 1.0 / R118 + 1.0 / R112 + 1.0 / (R104 + RT6 / 4.0) +
+               (c->dyn_pin13_ohms > 0.0f ? 1.0 / c->dyn_pin13_ohms : 0.0);
     double alpha = (1.0 / R125) / g, beta = (-15.0 / R112) / g;
     double rth = 1.0 / (1.0 / R135 + (1.0 - alpha) / R125);
     int k;
@@ -66,8 +67,7 @@ void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs)
     d->vc = d->vrest;
     d->decay = (float)exp(-1.0 / (fs * rth * C111));
     d->dt = (float)(1.0 / fs);
-    d->gate_len = (float)(c->dyn_gate_s * fs);
-    d->gate_left = 0.0f;
+    d->gate_low = 0;
     /* Pin 13 moves by alpha times the capacitor; the exponential converter
      * gives an octave per Vt ln 2, falling as the pin rises. */
     d->oct_per_volt = (float)(alpha / (c->dyn_vt * log(2.0)));
@@ -85,22 +85,16 @@ void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs)
     md12_iir_design(&d->out, &md12_proto_dynout, 1.0, fs);
 }
 
-void md12_dyn_trigger(md12_dyn *d)
-{
-    d->gate_left = d->gate_len;
-}
-
 /* The capacitor for one host sample. With the GAIN line high it relaxes to
  * rest along one time constant; held low, the diode's current is added and
  * the step is split in four. */
 static void envelope(md12_dyn *d)
 {
     int s;
-    if (d->gate_left <= 0.0f) {
+    if (!d->gate_low) {
         d->vc = d->vrest + (d->vc - d->vrest) * d->decay;
         return;
     }
-    d->gate_left -= 1.0f;
     for (s = 0; s < 4; s++) {
         float x = d->vc * ((MD12_DIODE_POINTS - 1) / (float)DIODE_TOP), a, i;
         int k;

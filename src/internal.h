@@ -33,7 +33,14 @@ float md12_iir_run(md12_iir *f, float x);
 extern const float md12_ladder_tab[MD12_LADDER_ROWS][4];
 
 void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs);
-void md12_dyn_trigger(md12_dyn *d);
 float md12_dyn_run(md12_dyn *d, float x);
+
+/* The OS's housekeeping interrupt: CTC prescaler 256 times 16 at the Z80's
+ * 20 MHz / 6, which is 24576 master cycles, exactly 32 frames. The filter
+ * trigger's GAIN line rises on the eighth tick after a note, 182 to 263 us
+ * into the routine: about 6 frames. */
+#define MD12_TICK_FRAMES 32
+#define MD12_GATE_TICKS 8
+#define MD12_GATE_LATE 6
 
 #endif
