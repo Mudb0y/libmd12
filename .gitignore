@@ -1,0 +1,4 @@
+reference/
+build/
+*.o
+*.a
