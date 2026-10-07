@@ -19,6 +19,8 @@
  *                  (default sp1200)
  *   -k FILE        a calibration file, as tools/kit/analyse.py writes,
  *                  read over the machine's
+ *   -p MS          effect only: fire the filter of outputs 1 and 2 every MS
+ *                  milliseconds, as pad hits would (default never)
  *   -g GAIN        input gain, linear (default 1)
  *   -s A/B         the 45 rpm trick: sample IN as if played A/B times faster
  */
@@ -33,7 +35,7 @@ static void usage(void)
 {
     fprintf(stderr, "usage: md12 sample|effect IN.wav OUT.wav [-t semitones] [-c channel] [-l level]\n"
                     "            [-o tip|ring|mix|tipring] [-r rate] [-m sp1200|sp12|sp12m] [-k file]\n"
-                    "            [-g gain] [-s A/B]\n");
+                    "            [-g gain] [-s A/B] [-p ms]\n");
     exit(2);
 }
 
@@ -106,7 +108,7 @@ int main(int argc, char **argv)
     const char *in_path, *out_path, *tap = "tip", *calfile = NULL;
     int tune = 0, channel = 8, level = 31, i, stereo, ncodes, ended = 0;
     uint32_t rate = 0, in_rate, speed_num = 1, speed_den = 1;
-    float gain = 1.0f, *x, *y, *y2;
+    float gain = 1.0f, every_ms = 0.0f, *x, *y, *y2;
     long n, max_out, done = 0;
     char err[256];
     md12_calib cal;
@@ -140,6 +142,8 @@ int main(int argc, char **argv)
             parse_speed(v, &speed_num, &speed_den);
         else if (!strcmp(a, "-k"))
             calfile = v;
+        else if (!strcmp(a, "-p"))
+            every_ms = (float)atof(v);
         else if (!strcmp(a, "-m")) {
             if (!strcmp(v, "sp1200"))
                 md12_calib_sp1200(&cal);
@@ -182,7 +186,16 @@ int main(int argc, char **argv)
         x = realloc(x, (size_t)total * sizeof *x);
         y = malloc((size_t)total * sizeof *y);
         memset(x + n, 0, (size_t)(total - n) * sizeof *x);
-        md12_effect_process(&e, x, y, (int)total);
+        if (every_ms > 0.0f) {
+            long step = (long)(every_ms * 0.001f * (float)rate), at;
+            for (at = 0; at < total; at += step) {
+                long len = total - at < step ? total - at : step;
+                md12_effect_trigger(&e);
+                md12_effect_process(&e, x + at, y + at, (int)len);
+            }
+        } else {
+            md12_effect_process(&e, x, y, (int)total);
+        }
         if (wav_write_mono(out_path, y, total, rate, err, sizeof err))
             fail(err);
         printf("md12: wrote %s, %.2f s at %u Hz\n", out_path, (double)total / rate, rate);
@@ -206,6 +219,9 @@ int main(int argc, char **argv)
                                      md12_input_max_codes(&in, MD12_TAPS / 2 + 1));
     }
     ncodes = ncodes > 10 ? ncodes - 5 : ncodes;
+    /* A sound cannot cross a 64K-sample bank. */
+    if (ncodes > 65536)
+        ncodes = 65536;
 
     /* Play it once, and stop a tenth of a second after the voice ends. */
     md12_machine_init(&m, &cal, rate);
