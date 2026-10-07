@@ -60,12 +60,13 @@ void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs)
     double g = 1.0 / R125 + 1.0 / R118 + 1.0 / R112 + 1.0 / (R104 + RT6 / 4.0) +
                (c->dyn_pin13_ohms > 0.0f ? 1.0 / c->dyn_pin13_ohms : 0.0);
     double alpha = (1.0 / R125) / g, beta = (-15.0 / R112) / g;
-    double rth = 1.0 / (1.0 / R135 + (1.0 - alpha) / R125);
+    double rth = 1.0 / (1.0 / R135 + (1.0 - alpha) / R125), cap = C111 * c->dyn_cap_scale[channel];
     int k;
 
     d->vrest = (float)((15.0 / R135 + beta / R125) * rth);
     d->vc = d->vrest;
-    d->decay = (float)exp(-1.0 / (fs * rth * C111));
+    d->decay = (float)exp(-1.0 / (fs * rth * cap));
+    d->inv_cap = (float)(1.0 / cap);
     d->dt = (float)(1.0 / fs);
     d->gate_low = 0;
     /* Pin 13 moves by alpha times the capacitor; the exponential converter
@@ -81,7 +82,7 @@ void md12_dyn_init(md12_dyn *d, const md12_calib *c, int channel, double fs)
      * output current into the 15K stage is not specified, so the whole is
      * scaled to unity gain for small signals: an estimate. */
     d->in_scale = (float)(2.5 * 200.0 / 33200.0 / (2.0 * c->dyn_vt));
-    d->out_scale = 1.0f / d->in_scale;
+    d->out_scale = c->dyn_gain[channel] / d->in_scale;
     md12_iir_design(&d->out, &md12_proto_dynout, 1.0, fs);
 }
 
@@ -107,7 +108,7 @@ static void envelope(md12_dyn *d)
         i = d->diode[k] + a * (d->diode[k + 1] - d->diode[k]);
         /* Relaxation toward rest is (vrest - vc) / (rth C); the diode adds
          * its current. */
-        d->vc += 0.25f * d->dt * ((d->vrest - d->vc) * (1.0f - d->decay) / d->dt - i / (float)C111);
+        d->vc += 0.25f * d->dt * ((d->vrest - d->vc) * (1.0f - d->decay) / d->dt - i * d->inv_cap);
     }
 }
 

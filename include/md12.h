@@ -75,10 +75,19 @@ typedef struct md12_calib {
     /* The SSM2044's frequency control input as a resistance to ground, ohms,
      * which loads the pin 13 divider; 0 is an open input. */
     float dyn_pin13_ohms;
+    /* C111 and C110, the 10 uF tantalums that time the sweeps, over their
+     * marked value. */
+    float dyn_cap_scale[2];
+    /* Outputs 1 and 2's gain against the others: the SSM2044's output
+     * current is not specified, so 1 is an estimate. */
+    float dyn_gain[2];
 } md12_calib;
 
 void md12_calib_sp1200(md12_calib *c);
 void md12_calib_sp12(md12_calib *c);
+/* The SP-12 of John Nolting's CCRMA recordings, as tools/validate_sp12.py
+ * measures it. */
+void md12_calib_sp12_measured(md12_calib *c);
 
 /* ---- Voice: one channel of the playback controller ----------------------
  * Advanced once per frame. A voice reads 12-bit codes from caller memory. */
@@ -132,7 +141,7 @@ typedef struct md12_iir {
  * that a trigger discharges, and the output stage after it. */
 #define MD12_DIODE_POINTS 128
 typedef struct md12_dyn {
-    float vc, vrest, decay, dt;
+    float vc, vrest, decay, dt, inv_cap;
     int gate_low;
     float oct_per_volt, lr0;
     float v1[4], v2[4], y[4], t[4];

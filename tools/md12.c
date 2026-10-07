@@ -13,7 +13,8 @@
  *   -l LEVEL       level, 0 to 31 (default 31)
  *   -o tip|ring|mix   which jack to record (default tip)
  *   -r RATE        output sample rate (default the input's)
- *   -m sp1200|sp12 the machine (default sp1200)
+ *   -m sp1200|sp12|sp12m  the machine; sp12m is the measured SP-12
+ *                  (default sp1200)
  *   -g GAIN        input gain, linear (default 1)
  *   -s A/B         the 45 rpm trick: sample IN as if played A/B times faster
  */
@@ -27,7 +28,7 @@
 static void usage(void)
 {
     fprintf(stderr, "usage: md12 sample|effect IN.wav OUT.wav [-t semitones] [-c channel] [-l level]\n"
-                    "            [-o tip|ring|mix] [-r rate] [-m sp1200|sp12] [-g gain] [-s A/B]\n");
+                    "            [-o tip|ring|mix] [-r rate] [-m sp1200|sp12|sp12m] [-g gain] [-s A/B]\n");
     exit(2);
 }
 
@@ -90,6 +91,8 @@ int main(int argc, char **argv)
                 md12_calib_sp1200(&cal);
             else if (!strcmp(v, "sp12"))
                 md12_calib_sp12(&cal);
+            else if (!strcmp(v, "sp12m"))
+                md12_calib_sp12_measured(&cal);
             else
                 usage();
         } else

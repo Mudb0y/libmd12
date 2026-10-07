@@ -37,7 +37,10 @@ build/test_md12: tests/test_md12.c $(LIB)
 check: build/test_md12
 	./build/test_md12
 
-cli: build/md12
+cli: build/md12 build/probe
+
+build/probe: tools/probe.c $(LIB)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -Wall -Wextra tools/probe.c $(LIB) -lm -o $@
 
 build/md12: tools/md12.c tools/wav.c tools/wav.h $(LIB)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -Wall -Wextra tools/md12.c tools/wav.c $(LIB) -lm -o $@

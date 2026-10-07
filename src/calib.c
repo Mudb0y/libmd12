@@ -1,12 +1,17 @@
 #include "internal.h"
 
-/* What the two machines share: the fixed filters at their drawn values and
- * the SSM2044 at 27 C, its frequency control input open. */
+/* What the two machines share: the fixed filters and C111 at their drawn
+ * values, and the SSM2044 at 27 C. The chip's frequency control input is not
+ * specified; both of the measured SP-12's chips sweep as if it loaded pin 13
+ * with 914 and 925 ohms (tools/validate_sp12.py), so it is taken as a
+ * property of the part. */
 static void common(md12_calib *c)
 {
     c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
     c->dyn_vt = 0.025852f;
-    c->dyn_pin13_ohms = 0.0f;
+    c->dyn_pin13_ohms = 920.0f;
+    c->dyn_cap_scale[0] = c->dyn_cap_scale[1] = 1.0f;
+    c->dyn_gain[0] = c->dyn_gain[1] = 1.0f;
 }
 
 /* SP-1200 service manual, 1987: RT1 is trimmed to read "804 or greater",
@@ -33,4 +38,23 @@ void md12_calib_sp12(md12_calib *c)
     c->split_jacks = 0;
     c->pitch_lsb = 0;
     c->dyn_rest_hz[0] = c->dyn_rest_hz[1] = 1300.0f;
+}
+
+/* Nolting's SP-12, from noise played through every output: its fixed filters
+ * have the schematic's shape within 0.14 to 0.22 dB rms, 6 to 10% higher;
+ * its dynamic filters rest at 1398 and 1481 Hz, against the manual's 1.3 kHz
+ * trim, and their sweeps fit the model within 0.024 octaves rms. */
+void md12_calib_sp12_measured(md12_calib *c)
+{
+    md12_calib_sp12(c);
+    c->fixed_scale[0] = 1.080f;
+    c->fixed_scale[1] = 1.060f;
+    c->fixed_scale[2] = 1.083f;
+    c->fixed_scale[3] = 1.104f;
+    c->dyn_rest_hz[0] = 1398.0f;
+    c->dyn_rest_hz[1] = 1481.0f;
+    c->dyn_cap_scale[0] = 1.120f;
+    c->dyn_cap_scale[1] = 1.090f;
+    c->dyn_gain[0] = 0.670f;
+    c->dyn_gain[1] = 0.930f;
 }
