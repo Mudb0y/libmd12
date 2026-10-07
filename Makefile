@@ -7,7 +7,7 @@ SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=build/%.o)
 LIB = build/libmd12.a
 
-.PHONY: all lib check cli cross clean kernel spice
+.PHONY: all lib check cli cross clean kernel spice selftest
 
 all: lib cli
 
@@ -38,6 +38,10 @@ check: build/test_md12
 	./build/test_md12
 
 cli: build/md12 build/probe
+
+# The owner test kit's analysis, run on the library itself.
+selftest: cli
+	python3 tools/kit/selftest.py
 
 build/probe: tools/probe.c $(LIB)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -Wall -Wextra tools/probe.c $(LIB) -lm -o $@

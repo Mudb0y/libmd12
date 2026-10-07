@@ -10,4 +10,8 @@ long wav_read_mono(const char *path, float **out, uint32_t *rate, char *err, int
 /* Writes 32-bit float, mono. Returns 0, or -1 with a message in err. */
 int wav_write_mono(const char *path, const float *x, long n, uint32_t rate, char *err, int errlen);
 
+/* The same with two channels. */
+int wav_write_stereo(const char *path, const float *l, const float *r, long n, uint32_t rate,
+                     char *err, int errlen);
+
 #endif

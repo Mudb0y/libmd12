@@ -102,10 +102,12 @@ long wav_read_mono(const char *path, float **out, uint32_t *rate, char *err, int
 static void put32(unsigned char *p, uint32_t v) { p[0] = (unsigned char)v; p[1] = (unsigned char)(v >> 8); p[2] = (unsigned char)(v >> 16); p[3] = (unsigned char)(v >> 24); }
 static void put16(unsigned char *p, uint16_t v) { p[0] = (unsigned char)v; p[1] = (unsigned char)(v >> 8); }
 
-int wav_write_mono(const char *path, const float *x, long n, uint32_t rate, char *err, int errlen)
+static int write_wav(const char *path, const float *l, const float *r, long n, uint32_t rate,
+                     char *err, int errlen)
 {
     FILE *f = fopen(path, "wb");
     unsigned char h[44];
+    unsigned ch = r ? 2u : 1u;
     long i;
 
     if (!f) {
@@ -113,28 +115,44 @@ int wav_write_mono(const char *path, const float *x, long n, uint32_t rate, char
         return -1;
     }
     memcpy(h, "RIFF", 4);
-    put32(h + 4, (uint32_t)(36 + n * 4));
+    put32(h + 4, (uint32_t)(36 + n * 4 * ch));
     memcpy(h + 8, "WAVEfmt ", 8);
     put32(h + 16, 16);
     put16(h + 20, 3);
-    put16(h + 22, 1);
+    put16(h + 22, (uint16_t)ch);
     put32(h + 24, rate);
-    put32(h + 28, rate * 4);
-    put16(h + 32, 4);
+    put32(h + 28, rate * 4 * ch);
+    put16(h + 32, (uint16_t)(4 * ch));
     put16(h + 34, 32);
     memcpy(h + 36, "data", 4);
-    put32(h + 40, (uint32_t)(n * 4));
+    put32(h + 40, (uint32_t)(n * 4 * ch));
     fwrite(h, 1, 44, f);
     for (i = 0; i < n; i++) {
         unsigned char b[4];
         uint32_t u;
-        memcpy(&u, &x[i], 4);
+        memcpy(&u, &l[i], 4);
         put32(b, u);
         fwrite(b, 1, 4, f);
+        if (r) {
+            memcpy(&u, &r[i], 4);
+            put32(b, u);
+            fwrite(b, 1, 4, f);
+        }
     }
     if (fclose(f)) {
         snprintf(err, errlen, "%s: %s", path, strerror(errno));
         return -1;
     }
     return 0;
+}
+
+int wav_write_mono(const char *path, const float *x, long n, uint32_t rate, char *err, int errlen)
+{
+    return write_wav(path, x, 0, n, rate, err, errlen);
+}
+
+int wav_write_stereo(const char *path, const float *l, const float *r, long n, uint32_t rate,
+                     char *err, int errlen)
+{
+    return write_wav(path, l, r, n, rate, err, errlen);
 }
