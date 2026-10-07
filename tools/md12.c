@@ -3,6 +3,9 @@
  *   md12 sample IN.wav OUT.wav [options]
  *     Samples IN through the SP-1200's input, as if recorded into it, and
  *     plays it back once on one channel.
+ *   md12 effect IN.wav OUT.wav [options]
+ *     Runs IN live through one channel; a tune other than 0 is the 45 rpm
+ *     trick at unchanged pitch.
  *
  * Options:
  *   -t SEMITONES   tune, -16 to +15 from the recorded pitch (default 0)
@@ -23,7 +26,7 @@
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: md12 sample IN.wav OUT.wav [-t semitones] [-c channel] [-l level]\n"
+    fprintf(stderr, "usage: md12 sample|effect IN.wav OUT.wav [-t semitones] [-c channel] [-l level]\n"
                     "            [-o tip|ring|mix] [-r rate] [-m sp1200|sp12] [-g gain] [-s A/B]\n");
     exit(2);
 }
@@ -59,7 +62,7 @@ int main(int argc, char **argv)
     uint16_t *codes;
     int ncodes, more;
 
-    if (argc < 4 || strcmp(argv[1], "sample"))
+    if (argc < 4 || (strcmp(argv[1], "sample") && strcmp(argv[1], "effect")))
         usage();
     in_path = argv[2];
     out_path = argv[3];
@@ -103,6 +106,28 @@ int main(int argc, char **argv)
         fail(err);
     if (!rate)
         rate = in_rate;
+
+    if (!strcmp(argv[1], "effect")) {
+        static md12_effect e;
+        int t = !strcmp(tap, "tip") ? MD12_TAP_TIP : !strcmp(tap, "ring") ? MD12_TAP_RING : MD12_TAP_MIX;
+        long total;
+        if (rate != in_rate)
+            fail("effect runs at the input's own rate");
+        md12_effect_init(&e, &cal, in_rate);
+        md12_effect_set(&e, channel - 1, MD12_TUNE_UNITY + tune, level, t);
+        md12_effect_set_gain(&e, gain);
+        total = n + md12_effect_latency(&e) + 64;
+        x = realloc(x, (size_t)total * sizeof *x);
+        y = malloc((size_t)total * sizeof *y);
+        memset(x + n, 0, (size_t)(total - n) * sizeof *x);
+        md12_effect_process(&e, x, y, (int)total);
+        if (wav_write_mono(out_path, y, total, rate, err, sizeof err))
+            fail(err);
+        printf("md12: wrote %s, %.2f s at %u Hz\n", out_path, (double)total / rate, rate);
+        free(x);
+        free(y);
+        return 0;
+    }
 
     /* Sample: the input, then enough silence to flush the interpolator. */
     md12_input_init(&in, &cal, in_rate, speed_num, speed_den);

@@ -166,6 +166,38 @@ void md12_machine_trigger(md12_machine *m, int channel, const uint16_t *mem,
 void md12_machine_set_plugged(md12_machine *m, uint8_t mask);
 void md12_machine_process(md12_machine *m, const md12_outputs *o, int n);
 
+/* ---- Effect: live audio through one channel -----------------------------
+ * The input samples into a short buffer and the playback controller reads it
+ * back as it reads memory. A tune index other than unity is the 45 rpm trick:
+ * the input is sampled as if sped up by exactly the ratio that tuning slows
+ * it down by, so pitch and length are unchanged and only its artefacts are
+ * heard. Changing the tune resets the input filter. */
+enum { MD12_TAP_TIP, MD12_TAP_RING, MD12_TAP_MIX };
+
+#define MD12_EFFECT_BUF 64
+
+typedef struct md12_effect {
+    md12_calib cal;
+    md12_input in;
+    md12_clock clock;
+    md12_render render;
+    md12_iir fixed;
+    uint16_t buf[MD12_EFFECT_BUF];
+    uint32_t written, addr;
+    uint32_t host_rate;
+    uint8_t frac, pitch, started;
+    int channel, level, tap, tune;
+    float mix_gain;
+} md12_effect;
+
+void md12_effect_init(md12_effect *e, const md12_calib *c, uint32_t host_rate);
+/* channel 0 is output 1; tap is MD12_TAP_TIP, _RING or _MIX. */
+void md12_effect_set(md12_effect *e, int channel, int tune_index, int level_index, int tap);
+void md12_effect_set_gain(md12_effect *e, float gain);
+void md12_effect_process(md12_effect *e, const float *in, float *out, int n);
+/* Delay from input to output, in host samples. */
+int md12_effect_latency(const md12_effect *e);
+
 #ifdef __cplusplus
 }
 #endif

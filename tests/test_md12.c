@@ -482,8 +482,74 @@ static void test_input_filter(void)
     }
 }
 
+/* ---- effect mode --------------------------------------------------------- */
+
+static void test_effect(void)
+{
+    enum { N = 48000 };
+    static float in[N], out[N], out2[N];
+    md12_calib cal;
+    md12_effect e;
+    int i, lat, best = 0, t;
+    double peak = -1.0, amp, f = 1000.0;
+
+    md12_calib_sp1200(&cal);
+    for (i = 0; i < N; i++)
+        in[i] = (float)(0.5 * sin(2.0 * M_PI * f * i / 48000.0));
+
+    /* Unity, raw channel 8: the tone comes through at its pitch, delayed by
+     * the stated latency, with the input filter and the hold's droop. */
+    {
+        static float noise[N];
+        uint32_t seed = 1;
+        for (i = 0; i < N; i++) {
+            seed = seed * 1664525u + 1013904223u;
+            noise[i] = (float)((int32_t)seed) * (0.3f / 2147483648.0f);
+        }
+        md12_effect_init(&e, &cal, 48000);
+        md12_effect_set(&e, 7, MD12_TUNE_UNITY, 31, MD12_TAP_TIP);
+        lat = md12_effect_latency(&e);
+        md12_effect_process(&e, noise, out, N);
+        for (t = 0; t < 200; t++) {
+            double c = 0.0;
+            for (i = 4000; i < N - 400; i++)
+                c += noise[i] * out[i + t];
+            if (c > peak) {
+                peak = c;
+                best = t;
+            }
+        }
+        /* On top of the stated latency, the anti-alias filter's own delay
+         * and the hold's half frame, which the machine has too. */
+        CHECK(best >= lat && best <= lat + 15, "effect delay %d, latency says %d", best, lat);
+    }
+    md12_effect_init(&e, &cal, 48000);
+    md12_effect_set(&e, 7, MD12_TUNE_UNITY, 31, MD12_TAP_TIP);
+    md12_effect_process(&e, in, out, N);
+    amp = tone_amp(out + 4096, 32768, 48000, f);
+    CHECK(fabs(db(amp / 0.5) - db(zoh(f) * 255.0 / 256.0)) < 0.15, "effect level %.3f dB", db(amp / 0.5));
+
+    /* The 45 rpm trick keeps the pitch. */
+    md12_effect_init(&e, &cal, 48000);
+    md12_effect_set(&e, 7, 11, 31, MD12_TAP_TIP);
+    md12_effect_process(&e, in, out, N);
+    amp = tone_amp(out + 4096, 32768, 48000, f);
+    CHECK(db(amp / 0.5) > -1.0, "trick keeps a 1 kHz tone at 1 kHz: %.2f dB", db(amp / 0.5));
+
+    /* Any block size, the same output. */
+    md12_effect_init(&e, &cal, 44100);
+    md12_effect_set(&e, 3, 9, 31, MD12_TAP_RING);
+    md12_effect_process(&e, in, out, N);
+    md12_effect_init(&e, &cal, 44100);
+    md12_effect_set(&e, 3, 9, 31, MD12_TAP_RING);
+    for (i = 0; i < N; i += 37)
+        md12_effect_process(&e, in + i, out2 + i, N - i < 37 ? N - i : 37);
+    CHECK(memcmp(out, out2, sizeof out) == 0, "effect output depends on block size");
+}
+
 int main(void)
 {
+    test_effect();
     test_filters();
     test_input_filter();
     test_tables();
