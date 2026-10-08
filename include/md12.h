@@ -1,5 +1,5 @@
 /*
- * libmd12hundwed: the E-mu SP-1200's audio path.
+ * libmd12: the E-mu SP-1200's audio path.
  *
  * Every structure here is owned by the caller and may live anywhere: the
  * library never allocates, locks or calls the operating system, and calls no

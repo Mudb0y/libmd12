@@ -1,5 +1,5 @@
 {
-  description = "libmd12hundwed: a faithful emulation of the E-mu SP-1200's audio path";
+  description = "libmd12: a faithful emulation of the E-mu SP-1200's audio path";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

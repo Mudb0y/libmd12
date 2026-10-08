@@ -4,9 +4,10 @@ static const md12_proto *const fixed_proto[4] = {
     &md12_proto_fixed3, &md12_proto_fixed4, &md12_proto_fixed5, &md12_proto_fixed6,
 };
 
-/* From the OS's voice start, timed on its own code (firmware.md, question
- * 5): the filter's GAIN line falls first, the old voice is muted about
- * 0.15 ms later, and the new one runs from about 0.27 ms. */
+/* From the OS's voice start, 0x21A3 to 0x220A in 1.04 and 0x21F3 in E-mu's
+ * 1.2, timed in a Z80 emulator: the filter's GAIN line falls first, the old
+ * voice is muted about 0.15 ms later, and the new one runs from about
+ * 0.27 ms. */
 #define MUTE_FRAMES 4
 #define START_FRAMES 7
 

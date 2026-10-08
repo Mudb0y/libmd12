@@ -680,7 +680,7 @@ static void test_dyn_response(void)
 /* ---- the operating system ------------------------------------------------ */
 
 /* A decayed sound at decay 0 steps down every 2 ticks from tick 2 and is
- * silent at tick 62, 76 ms (firmware.md, question 1). */
+ * silent at tick 62, 76 ms, as OS 1.04 does in a Z80 emulator. */
 static void test_decay(void)
 {
     enum { LEN = 20000 };

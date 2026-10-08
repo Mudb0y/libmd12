@@ -15,9 +15,10 @@ static const uint8_t level_table[32] = {
     27, 31, 36, 42, 49, 57, 66, 77, 90, 104, 121, 140, 163, 189, 220, 255,
 };
 
-/* The decay table that precedes it, at 0x220E: per decay value, the ticks
- * between level steps and the number of such periods the level is held
- * first (reference/notes/firmware.md; the same in E-mu's OS 1.2). */
+/* The decay table just before the semitone table, at 0x220E: per decay
+ * value, the ticks between level steps and the number of such periods the
+ * level is held first, as the tick routine at 0x0776 reads them (the same
+ * in E-mu's OS 1.2). */
 static const uint8_t decay_table[32][2] = {
     {2, 0}, {2, 4}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1},
     {9, 1}, {10, 1}, {11, 1}, {12, 2}, {13, 3}, {14, 5}, {15, 7}, {16, 9},
