@@ -1,15 +1,13 @@
 #include "internal.h"
 
 /* What the two machines share: the fixed filters and C111 at their drawn
- * values, and the SSM2044 at 27 C. The chip's frequency control input is not
- * specified; both of the measured SP-12's chips sweep as if it loaded pin 13
- * with 914 and 925 ohms (tools/validate_sp12.py), so it is taken as a
- * property of the part. */
+ * values, the SSM2044 at 27 C, and the measured SP-12's sweep, since both
+ * service manuals draw that network part for part the same. */
 static void common(md12_calib *c)
 {
     c->fixed_scale[0] = c->fixed_scale[1] = c->fixed_scale[2] = c->fixed_scale[3] = 1.0f;
     c->dyn_vt = 0.025852f;
-    c->dyn_pin13_ohms = 920.0f;
+    c->dyn_pin13_ohms = MD12_PIN13_MEASURED;
     c->dyn_cap_scale[0] = c->dyn_cap_scale[1] = 1.0f;
     c->dyn_gain[0] = c->dyn_gain[1] = 1.0f;
 }

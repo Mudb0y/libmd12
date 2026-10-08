@@ -583,6 +583,7 @@ static void test_envelope(void)
     fclose(fp);
 
     md12_calib_sp1200(&cal);
+    cal.dyn_pin13_ohms = MD12_PIN13_DRAWN;
     md12_dyn_init(&d, &cal, 0, fs);
     for (k = 0; k < 9; k++) {
         while (t < st[k]) {
@@ -597,6 +598,46 @@ static void test_envelope(void)
         CHECK(fabs(d.vc - sv[k]) < 0.02 + 0.01 * sv[k], "capacitor at %.4f s: %.3f V, ngspice %.3f V",
               st[k], d.vc, sv[k]);
     }
+}
+
+/* Drawn, pin 13 follows the capacitor as ngspice's DC sweep of the network
+ * does, RT6 centred; measured, the sweep narrows to what the SP-12's fits. */
+static void test_sweep(void)
+{
+    char line[256];
+    FILE *fp = fopen("tests/data/spice_env_dc.csv", "r");
+    double sx = 0, sy = 0, sxx = 0, sxy = 0, slope, drawn;
+    int n = 0;
+    md12_calib cal;
+    md12_dyn d;
+
+    CHECK(fp != NULL, "spice_env_dc.csv");
+    if (!fp)
+        return;
+    if (fgets(line, sizeof line, fp))
+        while (fgets(line, sizeof line, fp)) {
+            double cap, cw, mid, ccw;
+            if (sscanf(line, "%lf,%lf,%lf,%lf", &cap, &cw, &mid, &ccw) != 4)
+                continue;
+            sx += cap;
+            sy += mid;
+            sxx += cap * cap;
+            sxy += cap * mid;
+            n++;
+        }
+    fclose(fp);
+    slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+
+    md12_calib_sp1200(&cal);
+    cal.dyn_pin13_ohms = MD12_PIN13_DRAWN;
+    md12_dyn_init(&d, &cal, 0, 48000.0);
+    drawn = d.oct_per_volt;
+    CHECK(fabs(drawn * cal.dyn_vt * log(2.0) / slope - 1.0) < 0.002,
+          "drawn: pin 13 moves %.5f V per capacitor volt, ngspice %.5f", drawn * cal.dyn_vt * log(2.0), slope);
+    cal.dyn_pin13_ohms = MD12_PIN13_MEASURED;
+    md12_dyn_init(&d, &cal, 0, 48000.0);
+    CHECK(fabs(d.oct_per_volt / drawn - 0.71) < 0.01, "measured: %.3f of the drawn sweep, want 0.71",
+          d.oct_per_volt / drawn);
 }
 
 /* At rest the four matched poles sit at the trimmed frequency, so 1 kHz is
@@ -705,6 +746,7 @@ int main(void)
     test_decay();
     test_gate();
     test_envelope();
+    test_sweep();
     test_dyn_response();
     test_effect();
     test_filters();

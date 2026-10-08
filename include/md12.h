@@ -54,6 +54,17 @@ uint8_t md12_level_code(int level_index);
 /* ---- Calibration --------------------------------------------------------
  * Everything that differs between units or models. Each preset documents
  * where its numbers come from. */
+
+/* Two sweeps for outputs 1 and 2, as values of dyn_pin13_ohms. Drawn is the
+ * control network exactly as both service manuals draw it. Measured is how
+ * both channels of the measured SP-12 sweep (914 and 925 ohms,
+ * tools/validate_sp12.py): each trigger's brightness ends about 35 ms sooner
+ * than the drawing predicts. Its cause is unknown. It is not the chip, whose
+ * successor's data sheet allows the input 10 uA at most; 270 ohm parts at
+ * R118 and R113 would fit equally. The presets use the measured sweep. */
+#define MD12_PIN13_DRAWN 0.0f
+#define MD12_PIN13_MEASURED 920.0f
+
 typedef struct md12_calib {
     /* The converter's offset in steps, set by the RT1 trim: the code read
      * with no input is 0x800 plus its whole part. */
@@ -72,10 +83,10 @@ typedef struct md12_calib {
     /* The SSM2044's thermal voltage, kT/q, which sets its volts per octave;
      * the chip has no temperature compensation. */
     float dyn_vt;
-    /* The SSM2044's frequency control input as a resistance to ground, ohms,
-     * which loads the pin 13 divider; 0 is an open input. */
+    /* An extra resistance from each SSM2044's pin 13 to ground, ohms, beside
+     * R118 and R113; 0 is none. */
     float dyn_pin13_ohms;
-    /* C111 and C110, the 10 uF tantalums that time the sweeps, over their
+    /* C111 and C109, the 10 uF tantalums that time the sweeps, over their
      * marked value. */
     float dyn_cap_scale[2];
     /* Outputs 1 and 2's gain against the others: the SSM2044's output

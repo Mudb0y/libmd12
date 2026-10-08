@@ -19,6 +19,9 @@
  *                  (default sp1200)
  *   -k FILE        a calibration file, as tools/kit/analyse.py writes,
  *                  read over the machine's
+ *   -d measured|drawn  the sweep of outputs 1 and 2's filter: as the
+ *                  measured SP-12's, or as the service manuals draw it
+ *                  (default measured, unless -k sets it)
  *   -p MS          effect only: fire the filter of outputs 1 and 2 every MS
  *                  milliseconds, as pad hits would (default never)
  *   -g GAIN        input gain, linear (default 1)
@@ -35,7 +38,7 @@ static void usage(void)
 {
     fprintf(stderr, "usage: md12 sample|effect IN.wav OUT.wav [-t semitones] [-c channel] [-l level]\n"
                     "            [-o tip|ring|mix|tipring] [-r rate] [-m sp1200|sp12|sp12m] [-k file]\n"
-                    "            [-g gain] [-s A/B] [-p ms]\n");
+                    "            [-d measured|drawn] [-g gain] [-s A/B] [-p ms]\n");
     exit(2);
 }
 
@@ -105,7 +108,7 @@ static void load_calib(const char *path, md12_calib *c)
 
 int main(int argc, char **argv)
 {
-    const char *in_path, *out_path, *tap = "tip", *calfile = NULL;
+    const char *in_path, *out_path, *tap = "tip", *calfile = NULL, *sweep = NULL;
     int tune = 0, channel = 8, level = 31, i, stereo, ncodes, ended = 0;
     uint32_t rate = 0, in_rate, speed_num = 1, speed_den = 1;
     float gain = 1.0f, every_ms = 0.0f, *x, *y, *y2;
@@ -142,6 +145,8 @@ int main(int argc, char **argv)
             parse_speed(v, &speed_num, &speed_den);
         else if (!strcmp(a, "-k"))
             calfile = v;
+        else if (!strcmp(a, "-d"))
+            sweep = v;
         else if (!strcmp(a, "-p"))
             every_ms = (float)atof(v);
         else if (!strcmp(a, "-m")) {
@@ -159,6 +164,12 @@ int main(int argc, char **argv)
     }
     if (calfile)
         load_calib(calfile, &cal);
+    if (sweep && !strcmp(sweep, "drawn"))
+        cal.dyn_pin13_ohms = MD12_PIN13_DRAWN;
+    else if (sweep && !strcmp(sweep, "measured"))
+        cal.dyn_pin13_ohms = MD12_PIN13_MEASURED;
+    else if (sweep)
+        usage();
     if (tune < -16 || tune > 15 || channel < 1 || channel > 8 || level < 0 || level > 31)
         fail("tune, channel or level out of range");
     if (strcmp(tap, "tip") && strcmp(tap, "ring") && strcmp(tap, "mix") && strcmp(tap, "tipring"))
